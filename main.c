@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <ctype.h> 
 
 #define FILENAME "inventory.txt"
 #define BILL_LOG "bills.txt"
@@ -25,6 +26,56 @@ typedef struct {
 } SpecialUser;
 
 float totalSales = 0;
+
+void removeDuplicatesInInventory() {
+    Medicine med;
+    FILE *file = fopen(FILENAME, "r");
+    FILE *temp = fopen("temp.txt", "w");
+
+    if (file == NULL || temp == NULL) {
+        printf("\033[31mError: Unable to access inventory file.\033[0m\n");
+        if (temp != NULL) fclose(temp);
+        if (file != NULL) fclose(file);
+        return;
+    }
+
+   // printf("\033[36mChecking for duplicate IDs in inventory...\033[0m\n");
+
+    // Hash map to track unique IDs (C doesn't have std::map, so use arrays)
+    int uniqueIDs[1000] = {0}; // Assumes IDs are within 1 to 1000 for simplicity
+    int idIndex = 0;           // Tracks how many IDs have been added
+
+    while (fscanf(file, "%d %s %d %f %s", &med.id, med.name, &med.quantity, &med.price, med.expiry) != EOF) {
+        int isDuplicate = 0;
+
+        // Check if the ID is already in the unique list
+        for (int i = 0; i < idIndex; i++) {
+            if (uniqueIDs[i] == med.id) {
+                isDuplicate = 1; // Duplicate found
+                break;
+            }
+        }
+
+        if (!isDuplicate) {
+            // Add unique ID to the tracker
+            uniqueIDs[idIndex++] = med.id;
+
+            // Write the unique record to the temp file
+            fprintf(temp, "%d %s %d %.2f %s\n", med.id, med.name, med.quantity, med.price, med.expiry);
+        } else {
+           // printf("\033[33mDuplicate ID %d found and removed.\033[0m\n", med.id);
+        }
+    }
+
+    fclose(file);
+    fclose(temp);
+
+    // Replace original file with the cleaned temp file
+    remove(FILENAME);
+    rename("temp.txt", FILENAME);
+
+   // printf("\033[32mInventory cleaned successfully. Duplicate IDs removed.\033[0m\n");
+}
 
 // Utility function to generate a random 5-digit serial number
 int generateSerialNumber() {
@@ -96,11 +147,42 @@ void registerSpecialUser() {
     printf("Special user registered successfully!\n");
     if (backOption()) return;
 }
+// Function to check if a given Medicine ID exists in the inventory
+int isMedicineIDExists(int id) {
+    Medicine med;
+    FILE *file = fopen(FILENAME, "r");
+    if (file == NULL) return 0;
 
-// Add Medicine
+    while (fscanf(file, "%d %s %d %f %s", &med.id, med.name, &med.quantity, &med.price, med.expiry) != EOF) {
+        if (med.id == id) {
+            fclose(file);
+            return 1; // ID exists
+        }
+    }
+
+    fclose(file);
+    return 0; // ID does not exist
+}
+// Function to validate the expiry date (returns 1 if expired, 0 otherwise)
+int isMedicineExpired(const char *expiry) {
+    struct tm expDate = {0};
+    time_t now = time(NULL);
+    struct tm *currentTime = localtime(&now);
+
+    // Parse expiry date (dd-mm-yyyy format)
+    sscanf(expiry, "%d-%d-%d", &expDate.tm_mday, &expDate.tm_mon, &expDate.tm_year);
+    expDate.tm_mon -= 1;  // Months are 0-11 in struct tm
+    expDate.tm_year -= 1900; // Years since 1900 in struct tm
+
+    time_t expTime = mktime(&expDate);
+
+    // Compare expiry date with current date
+    return expTime < now;
+}
+
+// Add Medicine (with validation for duplicate ID)
 void addMedicine() {
     Medicine med;
-    clearScreen();
     FILE *file = fopen(FILENAME, "a");
 
     if (file == NULL) {
@@ -108,11 +190,19 @@ void addMedicine() {
         return;
     }
 
-    printf("Enter Medicine ID (or press 0 to go back): ");
-    scanf("%d", &med.id);
-    if (med.id == 0) {
-        fclose(file);
-        return;
+    while (1) {
+        printf("Enter Medicine ID (or press 0 to go back): ");
+        scanf("%d", &med.id);
+        if (med.id == 0) {
+            fclose(file);
+            return;
+        }
+
+        if (isMedicineIDExists(med.id)) {
+            printf("\033[31mError: Medicine with ID %d already exists. Please use a unique ID.\033[0m\n", med.id);
+        } else {
+            break;
+        }
     }
 
     printf("Enter Medicine Name: ");
@@ -127,10 +217,9 @@ void addMedicine() {
     fprintf(file, "%d %s %d %.2f %s\n", med.id, med.name, med.quantity, med.price, med.expiry);
     fclose(file);
 
-    printf("Medicine added successfully!\n");
+    printf("\033[32mMedicine added successfully!\033[0m\n");
     if (backOption()) return;
 }
-
 // View Inventory
 void viewInventory() {
     Medicine med;
@@ -270,78 +359,165 @@ void deleteMedicine() {
     if (backOption()) return;
 }
 
-// Generate Bill
-void generateBill() {
+void browseMedicine() {
     Medicine med;
-    int id, quantity, found = 0;
-    float total = 0, tax;
-    int serial = generateSerialNumber();
-    FILE *file = fopen(FILENAME, "r");
-    FILE *temp = fopen("temp.txt", "w");
-    FILE *bill = fopen(BILL_LOG, "a");
+    char searchTerm[50];
+    int found = 0;
 
-    if (file == NULL || temp == NULL || bill == NULL) {
-        printf("Error opening file.\n");
-        if (backOption()) return;
+    FILE *file = fopen(FILENAME, "r");
+
+    if (file == NULL) {
+        printf("\033[31mError: Inventory file not found.\033[0m\n");
+        return;
     }
 
-    printf("Bill Serial Number: %d\n", serial);
-    fprintf(bill, "Serial Number: %d\n", serial);
-    printf("\n--- Enter Medicine Details for Purchase ---\n");
+    printf("\033[36m--- Browse Medicines ---\033[0m\n");
+    printf("Enter Medicine Name to Search: ");
+    scanf(" %[^\n]", searchTerm);  // Allows spaces in the search term
 
-    printf("Enter Medicine ID and Quantity (Enter 0 to stop):\n");
-    printf("-------------------------------------------------\n");
-    printf("%-10s %-20s %-15s %-10s\n", "ID", "Name", "Expiry", "Price");
-    printf("-------------------------------------------------\n");
+    printf("\033[32m%-10s %-20s %-10s %-10s %-15s\033[0m\n", "ID", "Name", "Quantity", "Price", "Expiry");
 
-    while (1) {
-        printf("Medicine ID: ");
-        scanf("%d", &id);
-        if (id == 0) break;
+    // Loop through the inventory to find matching medicine names
+    while (fscanf(file, "%d %s %d %f %s", &med.id, med.name, &med.quantity, &med.price, med.expiry) != EOF) {
+        // Convert both the search term and the medicine name to lowercase to handle case insensitivity
+        char lowerSearchTerm[50], lowerMedicineName[50];
+        strcpy(lowerSearchTerm, searchTerm);
+        strcpy(lowerMedicineName, med.name);
 
-        printf("Quantity: ");
-        scanf("%d", &quantity);
+        // Convert both to lowercase for case-insensitive comparison
+        for (int i = 0; lowerSearchTerm[i]; i++) lowerSearchTerm[i] = tolower(lowerSearchTerm[i]);
+        for (int i = 0; lowerMedicineName[i]; i++) lowerMedicineName[i] = tolower(lowerMedicineName[i]);
 
-        rewind(file); // Reset file pointer to the beginning of the inventory
-        while (fscanf(file, "%d %s %d %f %s", &med.id, med.name, &med.quantity, &med.price, med.expiry) != EOF) {
-            if (med.id == id && med.quantity >= quantity) {
-                found = 1;
-                med.quantity -= quantity;
-                total += med.price * quantity;
-                printf("%-10d %-20s %-15s %.2f\n", med.id, med.name, med.expiry, med.price * quantity);
-                fprintf(bill, "%s %d %s %.2f\n", med.name, quantity, med.expiry, med.price * quantity);
-            }
-            fprintf(temp, "%d %s %d %.2f %s\n", med.id, med.name, med.quantity, med.price, med.expiry);
+        // Search for partial or full matches
+        if (strstr(lowerMedicineName, lowerSearchTerm) != NULL) {
+            printf("%-10d %-20s %-10d %-10.2f %-15s\n", med.id, med.name, med.quantity, med.price, med.expiry);
+            found = 1;
         }
     }
 
-    tax = total * 0.025;
-    total += tax;
+    if (!found) {
+        printf("\033[31mNo medicine found with the name '%s'.\033[0m\n", searchTerm);
+    }
 
-    printf("\nSubtotal: %.2f\n", total - tax);
-    printf("Tax (2.5%%): %.2f\n", tax);
-    printf("Total Amount: %.2f\n", total);
+    fclose(file);
+    if (backOption()) return;
+}
+// Generate Bill (with expiry validation)
+void generateBill() {
+    removeDuplicatesInInventory();
+    Medicine med;
+    int medID, quantity, found;
+    float subtotal = 0, tax, total = 0;
+    char customerName[50];
+    int serialNumber = time(NULL) % 100000 + rand() % 90000; // Generate a unique serial number
 
-    fprintf(bill, "Tax: %.2f\n", tax);
-    fprintf(bill, "Total Amount: %.2f\n\n", total);
+    FILE *file = fopen(FILENAME, "r");
+    FILE *temp = fopen("temp.txt", "w");
+    FILE *billLog = fopen(BILL_LOG, "a");
+
+    if (file == NULL || temp == NULL) {
+        printf("\033[31mError: Inventory file not found.\033[0m\n");
+        if (temp != NULL) fclose(temp);
+        if (file != NULL) fclose(file);
+        if (backOption()) return;
+    }
+
+    printf("\033[36m--- Generate Bill ---\033[0m\n");
+    printf("Enter Customer Name: ");
+    scanf("%s", customerName);
+
+    printf("\n\033[34mBill Serial Number: %d\033[0m\n", serialNumber);
+    printf("\033[32m%-10s %-20s %-10s %-10s %-15s\033[0m\n", "ID", "Name", "Quantity", "Price", "Expiry");
+
+    // Write bill header to the log file
+    if (billLog) {
+        time_t now = time(NULL);
+        char formattedDate[100];
+        strftime(formattedDate, sizeof(formattedDate), "%Y-%m-%d %H:%M:%S", localtime(&now));
+        fprintf(billLog, "\nSerial Number: %d\nCustomer Name: %s\nDate: %s\n", serialNumber, customerName, formattedDate);
+        fprintf(billLog, "--------------------------------------------------------------------\n");
+        fprintf(billLog, "%-10s %-20s %-10s %-10s %-15s\n", "ID", "Name", "Quantity", "Price", "Expiry");
+    }
+
+    while (1) {
+        printf("\033[33mEnter Medicine ID (or 0 to finish): \033[0m");
+        scanf("%d", &medID);
+        if (medID == 0) break;
+
+        printf("Enter Quantity: ");
+        scanf("%d", &quantity);
+
+        found = 0;
+        rewind(file);
+
+        while (fscanf(file, "%d %s %d %f %s", &med.id, med.name, &med.quantity, &med.price, med.expiry) != EOF) {
+            if (med.id == medID) {
+                found = 1;
+
+                // Check if expired
+                if (isMedicineExpired(med.expiry)) {
+                    printf("\033[31mAlert: Medicine '%s' (ID: %d) is expired!\033[0m\n", med.name, med.id);
+                    break;
+                }
+
+                // Check for stock
+                if (quantity > med.quantity) {
+                    printf("\033[31mError: Not enough stock available for '%s'. Available: %d\033[0m\n", med.name, med.quantity);
+                    break;
+                }
+
+                // Update stock and calculate cost
+                med.quantity -= quantity;
+                float cost = med.price * quantity;
+                subtotal += cost;
+
+                // Display and log detailed information
+                printf("%-10d %-20s %-10d %-10.2f %-15s\n", med.id, med.name, quantity, med.price, med.expiry);
+                if (billLog) {
+                    fprintf(billLog, "%-10d %-20s %-10d %-10.2f %-15s\n", med.id, med.name, quantity, med.price, med.expiry);
+                }
+            }
+
+            // Write updated inventory to temp file
+            fprintf(temp, "%d %s %d %.2f %s\n", med.id, med.name, med.quantity, med.price, med.expiry);
+        }
+
+        if (!found) {
+            printf("\033[31mError: Medicine ID %d not found in inventory.\033[0m\n", medID);
+        }
+    }
 
     fclose(file);
     fclose(temp);
-    fclose(bill);
 
-    if (found) {
+    if (subtotal > 0) {
+        tax = subtotal * 0.025;  // Calculate 2.5% tax
+        total = subtotal + tax; // Final total
+        totalSales += total;    // Update total sales
+
+        // Display and log summary
+        printf("\n\033[36mSubtotal: %.2f\033[0m\n", subtotal);
+        printf("\033[36mTax (2.5%%): %.2f\033[0m\n", tax);
+        printf("\033[32mTotal Amount: %.2f\033[0m\n", total);
+
+        if (billLog) {
+            fprintf(billLog, "--------------------------------------------------------------------\n");
+            fprintf(billLog, "Subtotal: %.2f\nTax (2.5%%): %.2f\nTotal: %.2f\n", subtotal, tax, total);
+            fprintf(billLog, "--------------------------------------------------------------------\n\n");
+            fclose(billLog);
+        }
+
+        // Update inventory file
         remove(FILENAME);
         rename("temp.txt", FILENAME);
-        totalSales += total;
-        printf("\nBill generated successfully! Check bill log for details.\n");
     } else {
+        printf("\033[31mNo items were added to the bill.\033[0m\n");
+        fclose(temp);
         remove("temp.txt");
-        printf("\nNo valid medicines were selected or insufficient stock.\n");
     }
 
     if (backOption()) return;
 }
-
 // View Total Sales
 void viewTotalSales() {
     clearScreen();
@@ -391,8 +567,10 @@ void searchBill() {
 // Main Menu
 void adminMenu() {
     while (1) {
+        
         int choice;
         clearScreen();
+        removeDuplicatesInInventory();
         printf("\n\033[1;34m--- Admin Menu ---\033[0m\n");
         printf("1. Add Medicine\n");
         printf("2. View Inventory\n");
@@ -443,11 +621,13 @@ void specialUserMenu() {
     while (1) {
         int choice;
         clearScreen();
+        removeDuplicatesInInventory();
         printf("\n\033[1;34m--- Special User Menu ---\033[0m\n");
         printf("1. View Inventory\n");
         printf("2. Generate Bill\n");
         printf("3. Search Bill\n");
-        printf("4. Logout\n");
+        printf("4. View Total Sales\n");
+        printf("5. Logout\n");
         printf("Enter your choice: ");
         scanf("%d", &choice);
 
@@ -462,6 +642,9 @@ void specialUserMenu() {
                 searchBill();
                 break;
             case 4:
+                viewTotalSales();
+                break;
+            case 5:
                 return;
             default:
                 printf("Invalid choice. Try again.\n");
@@ -473,8 +656,9 @@ void customerMenu() {
     while (1) {
         int choice;
         clearScreen();
+        removeDuplicatesInInventory();
         printf("\n\033[1;34m--- Customer Menu ---\033[0m\n");
-        printf("1. View Inventory\n");
+        printf("1. Browse Medicine\n");
         printf("2. Generate Bill\n");
         printf("3. Search Bill\n");
         printf("4. Exit\n");
@@ -483,7 +667,7 @@ void customerMenu() {
 
         switch (choice) {
             case 1:
-                viewInventory();
+                browseMedicine();
                 break;
             case 2:
                 generateBill();
@@ -504,7 +688,7 @@ int main() {
     while (1) {
         char username[50], password[50];
         int role;
-
+        removeDuplicatesInInventory();
         printf("\n\033[1;34m--- Medical Store Management System ---\033[0m\n");
         printf("1. Admin Login\n");
         printf("2. Special User Login\n");
@@ -539,20 +723,16 @@ int main() {
                     printf("Invalid Special User credentials.\n");
                 }
                 break;
-
             case 3: // Customer
                 printf("Welcome Customer!\n");
                 customerMenu();
                 break;
-
             case 4: // Exit
                 printf("Thank you for using the system. Goodbye!\n");
                 exit(0);
-
             default:
                 printf("Invalid choice. Try again.\n");
         }
     }
-
     return 0;
 }
