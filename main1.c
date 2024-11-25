@@ -8,7 +8,7 @@
 #define BILL_LOG "bills.txt"
 #define SPECIAL_USER_FILE "special_users.txt"
 
-// Predefined admin credentials
+// admin 
 #define ADMIN_USERNAME "admin"
 #define ADMIN_PASSWORD "admin123"
 
@@ -28,8 +28,8 @@ typedef struct {
     char expiry[15];
 } CartItem;
 
-CartItem cart[100]; // Array to store cart items
-int cartSize = 0;   // Number of items in the cart
+CartItem cart[100]; 
+int cartSize = 0;   
 
 typedef struct {
     char username[50];
@@ -49,9 +49,8 @@ void removeDuplicatesInInventory() {
         if (file != NULL) fclose(file);
         return;
     }
-   // printf("\033[36mChecking for duplicate IDs in inventory...\033[0m\n");
-    // Hash map to track unique IDs (C doesn't have std::map, so use arrays)
-    int uniqueIDs[1000] = {0}; // Assumes IDs are within 1 to 1000 for simplicity
+ 
+    int uniqueIDs[1000] = {0}; 
     int idIndex = 0;           // Tracks how many IDs have been added
 
     while (fscanf(file, "%d %s %d %f %s", &med.id, med.name, &med.quantity, &med.price, med.expiry) != EOF) {
@@ -60,19 +59,14 @@ void removeDuplicatesInInventory() {
         // Check if the ID is already in the unique list
         for (int i = 0; i < idIndex; i++) {
             if (uniqueIDs[i] == med.id) {
-                isDuplicate = 1; // Duplicate found
+                isDuplicate = 1; 
                 break;
             }
         }
-
         if (!isDuplicate) {
             // Add unique ID to the tracker
             uniqueIDs[idIndex++] = med.id;
-
-            // Write the unique record to the temp file
             fprintf(temp, "%d %s %d %.2f %s\n", med.id, med.name, med.quantity, med.price, med.expiry);
-        } else {
-           // printf("\033[33mDuplicate ID %d found and removed.\033[0m\n", med.id);
         }
     }
 
@@ -82,26 +76,29 @@ void removeDuplicatesInInventory() {
     // Replace original file with the cleaned temp file
     remove(FILENAME);
     rename("temp.txt", FILENAME);
-
-   // printf("\033[32mInventory cleaned successfully. Duplicate IDs removed.\033[0m\n");
 }
 void clearScreen() {
-    #ifdef _WIN32
-        system("cls");  // Windows command to clear the screen
-    #else
-        system("clear"); // Unix/Linux/Mac command to clear the screen
-    #endif
+    system("cls"); 
 }
-// Back option utility function
+// Back option
 int backOption() {
     int choice;
-    printf("\nPress 1 to go back to the previous menu: ");
+    printf("\nPress 1 to go back to the previous menu: \nPress any to clean tarminal and go back: ");
     scanf("%d", &choice);
+    switch (choice)
+    {
+    case 1:
     if (choice == 1) {
         return 1; // Go back
     } else {
         printf("Invalid input. Returning to the previous menu.\n");
         return 1;
+    }
+        break;
+    default:
+        clearScreen();
+        return 1;
+        break;
     }
 }
 
@@ -124,7 +121,7 @@ int authenticate(const char *username, const char *password) {
     }
 
     fclose(file);
-    return 0; // Authentication failed
+    return 0; 
 }
 
 // Register a Special User (Admin Only)
@@ -132,11 +129,6 @@ void registerSpecialUser() {
     SpecialUser user;
     clearScreen();
     FILE *file = fopen(SPECIAL_USER_FILE, "a");
-
-    if (file == NULL) {
-        printf("Error opening user file.\n");
-        return;
-    }
 
     printf("Enter new special user username: ");
     scanf("%s", user.username);
@@ -149,7 +141,7 @@ void registerSpecialUser() {
     printf("Special user registered successfully!\n");
     if (backOption()) return;
 }
-// Function to check if a given Medicine ID exists in the inventory
+
 int isMedicineIDExists(int id) {
     Medicine med;
     FILE *file = fopen(FILENAME, "r");
@@ -158,14 +150,14 @@ int isMedicineIDExists(int id) {
     while (fscanf(file, "%d %s %d %f %s", &med.id, med.name, &med.quantity, &med.price, med.expiry) != EOF) {
         if (med.id == id) {
             fclose(file);
-            return 1; // ID exists
+            return 1; 
         }
     }
 
     fclose(file);
-    return 0; // ID does not exist
+    return 0; 
 }
-// Function to validate the expiry date (returns 1 if expired, 0 otherwise)
+
 int isMedicineExpired(const char *expiry) {
     struct tm expDate = {0};
     time_t now = time(NULL);
@@ -186,11 +178,6 @@ int isMedicineExpired(const char *expiry) {
 void addMedicine() {
     Medicine med;
     FILE *file = fopen(FILENAME, "a");
-
-    if (file == NULL) {
-        printf("Error opening inventory file.\n");
-        return;
-    }
 
     while (1) {
         printf("Enter Medicine ID (or press 0 to go back): ");
@@ -269,7 +256,7 @@ void updateMedicine() {
             printf("ID: %d\nName: %s\nQuantity: %d\nPrice: %.2f\nExpiry Date: %s\n", med.id, med.name, med.quantity, med.price, med.expiry);
 
             printf("\nEnter New Name (or press ENTER to keep current): ");
-            getchar(); // Clear input buffer
+            getchar();
             char newName[50];
             fgets(newName, sizeof(newName), stdin);
             if (newName[0] != '\n') {
@@ -373,7 +360,6 @@ void browseMedicine() {
 
     printf("\033[32m%-10s %-20s %-10s %-10s %-15s\033[0m\n", "ID", "Name", "Quantity", "Price", "Expiry");
 
-    // Loop through the inventory to find matching medicine names
     while (fscanf(file, "%d %s %d %f %s", &med.id, med.name, &med.quantity, &med.price, med.expiry) != EOF) {
         // Convert both the search term and the medicine name to lowercase to handle case insensitivity
         char lowerSearchTerm[50], lowerMedicineName[50];
@@ -547,7 +533,6 @@ void viewTotalSales() {
     printf("Total Sales: %.2f\n", totalSales);
     if (backOption()) return;
 }
-// Search Bill by Serial Number
 void searchBill() {
     int serial, found = 0;
     char line[256];
@@ -558,7 +543,6 @@ void searchBill() {
         printf("No bills found.\n");
         if (backOption()) return;
     }
-
     printf("Enter Bill Serial Number: ");
     scanf("%d", &serial);
 
@@ -583,11 +567,9 @@ void searchBill() {
     }
     if (backOption()) return;
 }
-// Main Menu
 void adminMenu() {
     while (1) {
         int choice;
-        clearScreen();
         removeDuplicatesInInventory();
         printf("\n\033[1;34m--- Admin Menu ---\033[0m\n");
         printf("1. Add Medicine\n");
@@ -632,6 +614,7 @@ void adminMenu() {
                 searchBill();
                 break;
             case 10:
+                clearScreen();
                 return;
             default:
                 printf("Invalid choice. Try again.\n");
@@ -641,7 +624,6 @@ void adminMenu() {
 void specialUserMenu() {
     while (1) {
         int choice;
-        clearScreen();
         removeDuplicatesInInventory();
         printf("\n\033[1;34m--- Special User Menu ---\033[0m\n");
         printf("1. View Inventory\n");
@@ -674,6 +656,7 @@ void specialUserMenu() {
                 viewTotalSales();
                 break;
             case 7:
+                clearScreen();
                 return;
             default:
                 printf("Invalid choice. Try again.\n");
@@ -683,7 +666,7 @@ void specialUserMenu() {
 void customerMenu() {
     while (1) {
         int choice;
-        clearScreen();
+      
         removeDuplicatesInInventory();
         printf("\n\033[1;34m--- Customer Menu ---\033[0m\n");
         printf("1. Browse Medicine\n");
@@ -708,13 +691,13 @@ void customerMenu() {
                 searchBill();
                 break;
             case 5:
+                clearScreen();
                 return;
             default:
                 printf("Invalid choice. Try again.\n");
         }
     }
 }
-// Main Function
 int main() {
     while (1) {
         char username[50], password[50];
@@ -729,7 +712,7 @@ int main() {
         scanf("%d", &role);
 
         switch (role) {
-            case 1: // Admin Login
+            case 1:
                 printf("\033[1;32mEnter Admin Username: \033[0m");
                 scanf("%s", username);
                 printf("\033[1;32mEnter Admin Password: \033[0m");
@@ -741,7 +724,7 @@ int main() {
                     printf("\033[1;31mInvalid Admin credentials.\033[0m\n");
                 }
                 break;
-            case 2: // Special User Login
+            case 2: 
                 printf("Enter Special User Username: ");
                 scanf("%s", username);
                 printf("Enter Special User Password: ");
@@ -753,14 +736,13 @@ int main() {
                     printf("Invalid Special User credentials.\n");
                 }
                 break;
-            case 3: // Customer
+            case 3:
                 printf("Welcome Customer!\n");
                 customerMenu();
                 break;
-            case 4: // Exit
+            case 4:
                 printf("Thank you for using the system. Goodbye!\n");
                 exit(0);
-
             default:
                 printf("Invalid choice. Try again.\n");
         }
